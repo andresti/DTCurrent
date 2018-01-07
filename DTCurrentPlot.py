@@ -23,17 +23,29 @@ class DTCurrentPlot(object):
 	# plot data
 	def plot_data(self):
 		for wire in ['wires', 'cathode']:
+			print wire
 			for station in self.data.stations:
+				print station
 				self.draw(y='slope', x='sector', series='wheel', station=station, wire=wire)
 				self.draw(y='maxcurrent', x='sector', series='wheel', station=station, wire=wire)
 				for wheel in self.data.wheels:
+					print wheel
 					self.draw(y='slope', x='sector', series='superlayer', wheel=wheel, station=station, wire=wire)
 					self.draw(y='maxcurrent', x='sector', series='superlayer', wheel=wheel, station=station, wire=wire)
 					for sector in self.data.sectors:
 						self.draw(y='current', x='luminosity', series='superlayer', wheel=wheel, station=station, sector=sector, wire=wire)
 		self.draw(y='slope', x='wheel', series='superlayer', station=station, sector=4)
 		self.draw(y='maxcurrent', x='wheel', series='superlayer', station=station, sector=4)
+		self.draw(y='maxcurrent', x='wheel', series='superlayer', station=station, sector=3)
+		self.draw(y='slope', x='wheel', series='superlayer', station=station, sector=3)
+		self.draw(y='slope', x='wheel', series='superlayer', station=station, sector=5)
+		self.draw(y='maxcurrent', x='wheel', series='superlayer', station=station, sector=5)
+		self.draw(y='slope', x='wheel', series='superlayer', station=station, sector=1)
+		self.draw(y='maxcurrent', x='wheel', series='superlayer', station=station, sector=1)
+		self.draw(y='slope', x='wheel', series='superlayer', station=station, sector=7)
+		self.draw(y='maxcurrent', x='wheel', series='superlayer', station=station, sector=7)
 		self.draw_slope_2d(station=4)
+
 		
 	def build_filterargs(self, filters={}):
 		return dict(
@@ -45,7 +57,7 @@ class DTCurrentPlot(object):
 			wire=filters['wire'] if 'wire' in filters else 'wires')
 		
 	def getdata(self, x, y, filters={}):
-		func = {'slope': self.data.slope, 'maxcurrent': self.data.maxcurrent}
+		func = {'slope': self.data.slope, 'maxcurrent': self.data.maxcurrent, 'Integrated': self.data.meanCharge }
 
 		xs = []
 		ys = []
@@ -60,10 +72,11 @@ class DTCurrentPlot(object):
 				
 		return (np.array(xs), np.array(ys)*(1e6 if y=='slope' else 1))
 		
-	def draw(self, x='sector', y='slope', series=None, format='png', wheel=None, station=None, sector=None, superlayer=None, layer=None, wire='wires'):	
+	def draw(self, x='sector', y='slope', series=None, format='png', wheel=None, station=None, sector=None, superlayer=None, layer=None, wire='wires'):
 		filters = {'wheel':wheel, 'station':station, 'sector':sector, 'superlayer':superlayer, 'layer':layer, 'wire':wire}
 		colors = 'rgbcymk'
-		
+		if y == 'Integrated':
+			filters = {'wheel':wheel, 'station':station, 'sector':sector, 'superlayer':superlayer, 'layer':layer, 'wire':wire}
 		xss = []
 		plots = 0
 		if series is None:
@@ -82,7 +95,8 @@ class DTCurrentPlot(object):
 				plt.plot(xs, ys, '--', c=colors[0], label='{:.2f} pA/Lumi'.format(slope*1e6))
 				
 				plt.legend(loc='upper center', ncol=1, frameon=False, numpoints=1)
-			else:
+			elif y == 'slope':
+                #print filters
 				xs, ys = self.getdata(x=x, y=y, filters=filters)
 			
 				if len(xs) == 0:
@@ -91,6 +105,14 @@ class DTCurrentPlot(object):
 				
 				xss = xs
 				plt.plot(xs, ys, 'o')
+			elif y == 'Integrated':
+				xs, ys = self.getdata(x=x, y=y, filters=filters)
+				if len(xs) == 0:
+					print('unavailable data, args: ', x, y, filters)
+					return
+				xss = xs
+				plt.plot(xs, ys, 'o')
+				
 		else:
 			for arg_nr, arg in enumerate(self.args[series]):
 				filters[series] = arg
@@ -109,7 +131,7 @@ class DTCurrentPlot(object):
 					plt.plot(xs, ys, '--', c=colors[arg_nr], label='{:.2f} pA/Lumi'.format(slope*1e6))
 				else:
 					xs, ys = self.getdata(x=x, y=y, filters=filters)
-						
+                    #print filters
 					if len(ys) == 0 or ys.max() == 0:# unavailable data
 						continue
 						
@@ -139,6 +161,8 @@ class DTCurrentPlot(object):
 			title = r'Maximum {place} Current ($\mu A$)'.format(place=wire)
 		elif y == 'current':
 			title = 'Average {place} Current vs Luminosity'.format(place=wire)
+		elif y == 'Integrated':
+			title = 'Integrated Current mC/cm'.format(place=wire)
 		title += '\nFill {fill}'.format(fill=self.data.fill)
 		
 		# build filename and labels based on a filter
@@ -164,17 +188,42 @@ class DTCurrentPlot(object):
 		
 		# save plot
 		self.plot_end(filename=filename, format=format)
+
+		return plt
 		
 	# draw 2d plot with colormap: 	
 	def draw_slope_2d(self, station=4, wire='wires', format='png'):
 		values = []
 		for wheel in self.data.wheels:
-			values.append([self.data.slope(wheel=wheel, sector=sector, wire=wire) for sector in self.data.sectors])
+			values.append([self.data.slope(wheel=wheel, sector=sector, station=station , wire=wire) for sector in self.data.sectors])
 		values = np.array(values) * 1e6
 		
 		fig, ax = plt.subplots()
 		
 		im = ax.pcolor(values[::-1], cmap='OrRd', edgecolor='black', linestyle=':', lw=1)
+		fig.colorbar(im)
+		
+		# labels
+		ax.xaxis.set(ticks=np.arange(len(self.data.sectors))+0.5, ticklabels=[self.labels['sector'].format(sector) for sector in self.data.sectors])
+		ax.yaxis.set(ticks=np.arange(len(self.data.wheels))+0.5, ticklabels=[self.labels['wheel'].format(wheel) for wheel in self.data.wheels][::-1])
+		#plt.xlabel('Sector')
+		#plt.ylabel('Wheel')
+		plt.title(r'Fill {fill} MB{station} slope $pA \cdot \mu barn \cdot s$'.format(fill=self.data.fill, station=station))
+		
+		# save plot
+		filename = 'slope2d_{wire}_MB{station}' \
+				.format(wire=wire, station=station)
+		self.plot_end(filename=filename, format=format)
+		
+	def draw_slopeSum_2d(self, station=4, wire='wires',superlayer=3, format='png'):
+		values = []
+		for wheel in self.data.wheels:
+			values.append([self.data.slope(wheel=wheel, sector=sector, station=station , wire=wire, Usemean = True) for sector in self.data.sectors])
+		values = np.array(values) * 1e6
+		
+		fig, ax = plt.subplots()
+		
+		im = ax.pcolor(values[::-1], cmap='cool', vmin=0.1, vmax=32., edgecolor='black', linestyle=':', lw=1)
 		fig.colorbar(im)
 		
 		# labels
@@ -199,3 +248,4 @@ class DTCurrentPlot(object):
 			plt.savefig(self.path + filename, bbox_inches='tight')
 			print('Saved ' + filename)
 		plt.clf()
+
